@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kprompt-dash</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <p class="eyebrow">kprompt-dash</p>
+        <h1>Cluster</h1>
+      </div>
+      <p id="ctx" class="meta">connecting…</p>
+    </header>
+
+    <section class="controls">
+      <label>
+        Namespace
+        <select id="ns"></select>
+      </label>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-kind="deployments">Deployments</button>
+        <button type="button" class="tab" data-kind="pods">Pods</button>
+      </div>
+    </section>
+
+    <main>
+      <table>
+        <thead id="head"></thead>
+        <tbody id="body">
+          <tr>
+            <td colspan="6">Loading…</td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+
+    <footer>
+      <p>
+        Read-only localhost inventory. Mutate via
+        <code>kprompt "…"</code> — not a Lens replacement.
+      </p>
+    </footer>
+    <script src="/app.js"></script>
+  </body>
+</html>
