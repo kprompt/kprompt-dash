@@ -5,29 +5,32 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/kprompt/kprompt-dash/internal/api"
+	"github.com/kprompt/kprompt-dash/internal/bind"
 	"github.com/kprompt/kprompt-dash/internal/kube"
 	"github.com/kprompt/kprompt-dash/web"
 )
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7474", "listen address (default localhost only)")
+	allowRemote := flag.Bool("allow-remote", false, "allow non-loopback --addr (no auth; dangerous)")
 	contextName := flag.String("context", "", "kubeconfig context")
-	open := flag.Bool("open", false, "print the UI URL (open browser yourself for now)")
+	open := flag.Bool("open", false, "open the UI in a browser")
 	flag.Parse()
 
-	if err := warnIfNonLocal(*addr); err != nil {
+	if err := bind.Check(*addr, *allowRemote); err != nil {
 		log.Fatal(err)
+	}
+	if !bind.IsLoopback(*addr) {
+		log.Printf("WARNING: listening on non-loopback %s — dash has no auth; kube access equals this process", *addr)
 	}
 
 	clients, err := kube.Connect(*contextName)
@@ -43,6 +46,8 @@ func main() {
 		Addr:              *addr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
 	}
 
 	go func() {
@@ -63,23 +68,6 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
-}
-
-func warnIfNonLocal(addr string) error {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		// allow :7474 form
-		if strings.HasPrefix(addr, ":") {
-			return fmt.Errorf("refusing bind-all address %q — use 127.0.0.1:7474 (pass --addr explicitly only if you understand the risk)", addr)
-		}
-		return nil
-	}
-	ip := net.ParseIP(host)
-	if host == "localhost" || (ip != nil && ip.IsLoopback()) {
-		return nil
-	}
-	log.Printf("WARNING: listening on non-loopback %s — dash has no auth; kube access equals this process", addr)
-	return nil
 }
 
 func openBrowser(url string) error {

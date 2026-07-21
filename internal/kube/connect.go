@@ -2,6 +2,7 @@ package kube
 
 import (
 	"fmt"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -27,6 +28,10 @@ func Connect(contextName string) (*Clients, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load kubeconfig: %w", err)
 	}
+	// Bound blast radius for a local UI process.
+	raw.Timeout = 15 * time.Second
+	raw.QPS = 20
+	raw.Burst = 40
 	rawCfg, err := cfg.RawConfig()
 	if err != nil {
 		return nil, err

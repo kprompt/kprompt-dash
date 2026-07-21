@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,7 +16,7 @@ import (
 )
 
 const (
-	maxEvents   = 20
+	maxEvents          = 20
 	logTailLines int64 = 80
 	maxLogBytes        = 32 << 10
 )
@@ -41,8 +40,9 @@ func Mount(mux *http.ServeMux, cl *kube.Clients) {
 
 func clusterOverview(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		nodes, errN := cl.Clientset.CoreV1().Nodes().List(r.Context(), metav1.ListOptions{Limit: 500})
-		nss, errNS := cl.Clientset.CoreV1().Namespaces().List(r.Context(), metav1.ListOptions{Limit: 500})
+		opts := listOpts(r)
+		nodes, errN := cl.Clientset.CoreV1().Nodes().List(r.Context(), opts)
+		nss, errNS := cl.Clientset.CoreV1().Namespaces().List(r.Context(), opts)
 		out := map[string]any{
 			"context": cl.Context,
 		}
@@ -59,12 +59,14 @@ func clusterOverview(cl *kube.Clients) http.HandlerFunc {
 			}
 			out["nodes"] = len(nodes.Items)
 			out["nodes_ready"] = ready
+			out["nodes_truncated"] = truncated(nodes.Continue, len(nodes.Items), opts.Limit)
 		}
 		if errNS != nil {
 			out["namespaces_error"] = errNS.Error()
 			out["namespaces"] = 0
 		} else {
 			out["namespaces"] = len(nss.Items)
+			out["namespaces_truncated"] = truncated(nss.Continue, len(nss.Items), opts.Limit)
 		}
 		writeJSON(w, http.StatusOK, out)
 	}
@@ -72,7 +74,8 @@ func clusterOverview(cl *kube.Clients) http.HandlerFunc {
 
 func listNodes(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		list, err := cl.Clientset.CoreV1().Nodes().List(r.Context(), metav1.ListOptions{Limit: 500})
+		opts := listOpts(r)
+		list, err := cl.Clientset.CoreV1().Nodes().List(r.Context(), opts)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -80,29 +83,36 @@ func listNodes(cl *kube.Clients) http.HandlerFunc {
 		out := make([]map[string]any, 0, len(list.Items))
 		for _, n := range list.Items {
 			out = append(out, map[string]any{
-				"name":     n.Name,
-				"ready":    nodeReady(&n),
-				"roles":    nodeRoles(&n),
-				"version":  n.Status.NodeInfo.KubeletVersion,
-				"os":       n.Status.NodeInfo.OperatingSystem,
-				"arch":     n.Status.NodeInfo.Architecture,
-				"age":      age(n.CreationTimestamp.Time),
+				"name":    n.Name,
+				"ready":   nodeReady(&n),
+				"roles":   nodeRoles(&n),
+				"version": n.Status.NodeInfo.KubeletVersion,
+				"os":      n.Status.NodeInfo.OperatingSystem,
+				"arch":    n.Status.NodeInfo.Architecture,
+				"age":     age(n.CreationTimestamp.Time),
 			})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": out, "context": cl.Context})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":     out,
+			"context":   cl.Context,
+			"truncated": truncated(list.Continue, len(list.Items), opts.Limit),
+			"limit":     opts.Limit,
+		})
 	}
 }
 
 func getNode(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
+		if !requireName(w, "node name", name) {
+			return
+		}
 		n, err := cl.Clientset.CoreV1().Nodes().Get(r.Context(), name, metav1.GetOptions{})
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
 		events := listEvents(r, cl, "", "Node", name)
-		// Node events are often in default ns or cluster-scoped; also try kube-system.
 		if len(events) == 0 || (len(events) == 1 && events[0]["reason"] == "ListFailed") {
 			events = listEvents(r, cl, "default", "Node", name)
 		}
@@ -129,7 +139,11 @@ func getNode(cl *kube.Clients) http.HandlerFunc {
 func listReplicaSets(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ns := r.PathValue("ns")
-		list, err := cl.Clientset.AppsV1().ReplicaSets(ns).List(r.Context(), metav1.ListOptions{Limit: 500})
+		if !requireName(w, "namespace", ns) {
+			return
+		}
+		opts := listOpts(r)
+		list, err := cl.Clientset.AppsV1().ReplicaSets(ns).List(r.Context(), opts)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -150,7 +164,12 @@ func listReplicaSets(cl *kube.Clients) http.HandlerFunc {
 				"age":       age(rs.CreationTimestamp.Time),
 			})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": out, "namespace": ns})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":     out,
+			"namespace": ns,
+			"truncated": truncated(list.Continue, len(list.Items), opts.Limit),
+			"limit":     opts.Limit,
+		})
 	}
 }
 
@@ -158,6 +177,9 @@ func getReplicaSet(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ns := r.PathValue("ns")
 		name := r.PathValue("name")
+		if !requireName(w, "namespace", ns) || !requireName(w, "name", name) {
+			return
+		}
 		rs, err := cl.Clientset.AppsV1().ReplicaSets(ns).Get(r.Context(), name, metav1.GetOptions{})
 		if err != nil {
 			writeErr(w, err)
@@ -186,7 +208,8 @@ func getReplicaSet(cl *kube.Clients) http.HandlerFunc {
 
 func listNamespaces(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		list, err := cl.Clientset.CoreV1().Namespaces().List(r.Context(), metav1.ListOptions{Limit: 500})
+		opts := listOpts(r)
+		list, err := cl.Clientset.CoreV1().Namespaces().List(r.Context(), opts)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -199,14 +222,23 @@ func listNamespaces(cl *kube.Clients) http.HandlerFunc {
 				"age":   age(ns.CreationTimestamp.Time),
 			})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": out, "context": cl.Context})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":     out,
+			"context":   cl.Context,
+			"truncated": truncated(list.Continue, len(list.Items), opts.Limit),
+			"limit":     opts.Limit,
+		})
 	}
 }
 
 func listDeployments(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ns := r.PathValue("ns")
-		list, err := cl.Clientset.AppsV1().Deployments(ns).List(r.Context(), metav1.ListOptions{Limit: 500})
+		if !requireName(w, "namespace", ns) {
+			return
+		}
+		opts := listOpts(r)
+		list, err := cl.Clientset.AppsV1().Deployments(ns).List(r.Context(), opts)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -222,7 +254,12 @@ func listDeployments(cl *kube.Clients) http.HandlerFunc {
 				"age":       age(d.CreationTimestamp.Time),
 			})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": out, "namespace": ns})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":     out,
+			"namespace": ns,
+			"truncated": truncated(list.Continue, len(list.Items), opts.Limit),
+			"limit":     opts.Limit,
+		})
 	}
 }
 
@@ -230,6 +267,9 @@ func getDeployment(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ns := r.PathValue("ns")
 		name := r.PathValue("name")
+		if !requireName(w, "namespace", ns) || !requireName(w, "name", name) {
+			return
+		}
 		d, err := cl.Clientset.AppsV1().Deployments(ns).Get(r.Context(), name, metav1.GetOptions{})
 		if err != nil {
 			writeErr(w, err)
@@ -262,7 +302,11 @@ func getDeployment(cl *kube.Clients) http.HandlerFunc {
 func listPods(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ns := r.PathValue("ns")
-		list, err := cl.Clientset.CoreV1().Pods(ns).List(r.Context(), metav1.ListOptions{Limit: 500})
+		if !requireName(w, "namespace", ns) {
+			return
+		}
+		opts := listOpts(r)
+		list, err := cl.Clientset.CoreV1().Pods(ns).List(r.Context(), opts)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -279,7 +323,12 @@ func listPods(cl *kube.Clients) http.HandlerFunc {
 				"age":       age(p.CreationTimestamp.Time),
 			})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": out, "namespace": ns})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":     out,
+			"namespace": ns,
+			"truncated": truncated(list.Continue, len(list.Items), opts.Limit),
+			"limit":     opts.Limit,
+		})
 	}
 }
 
@@ -287,6 +336,9 @@ func getPod(cl *kube.Clients) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ns := r.PathValue("ns")
 		name := r.PathValue("name")
+		if !requireName(w, "namespace", ns) || !requireName(w, "name", name) {
+			return
+		}
 		p, err := cl.Clientset.CoreV1().Pods(ns).Get(r.Context(), name, metav1.GetOptions{})
 		if err != nil {
 			writeErr(w, err)
@@ -429,7 +481,6 @@ func pickDeploymentPod(r *http.Request, cl *kube.Clients, d *appsv1.Deployment) 
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	// Prefer not-ready / high-restart pods for useful logs.
 	best := list.Items[0]
 	bestScore := podTroubleScore(&best)
 	for i := 1; i < len(list.Items); i++ {
@@ -538,16 +589,4 @@ func age(t time.Time) string {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeErr(w http.ResponseWriter, err error) {
-	writeJSON(w, http.StatusBadGateway, map[string]string{
-		"error": err.Error(),
-	})
 }
