@@ -6,75 +6,90 @@
     <title>kprompt-dash</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
-    <header class="top">
-      <div>
+  <body class="app">
+    <aside class="sidebar">
+      <div class="brand">
         <p class="eyebrow">kprompt-dash</p>
-        <h1>Cluster</h1>
+        <p id="ctx" class="meta">connecting…</p>
       </div>
-      <p id="ctx" class="meta">connecting…</p>
-    </header>
+      <nav class="nav" aria-label="Cluster views">
+        <button type="button" class="nav-item active" data-view="cluster">Cluster</button>
+        <button type="button" class="nav-item" data-view="nodes">Nodes</button>
+        <button type="button" class="nav-item" data-view="deployments">Deployments</button>
+        <button type="button" class="nav-item" data-view="replicasets">ReplicaSets</button>
+        <button type="button" class="nav-item" data-view="pods">Pods</button>
+      </nav>
+      <p class="sidebar-foot">Read-only · localhost</p>
+    </aside>
 
-    <section class="controls">
-      <label>
-        Namespace
-        <select id="ns"></select>
-      </label>
-      <div class="tabs" role="tablist">
-        <button type="button" class="tab active" data-kind="deployments">Deployments</button>
-        <button type="button" class="tab" data-kind="pods">Pods</button>
+    <div class="workspace">
+      <header class="top">
+        <div>
+          <p class="eyebrow" id="view-eyebrow">Overview</p>
+          <h1 id="view-title">Cluster</h1>
+        </div>
+        <label id="ns-wrap" class="ns-wrap" hidden>
+          Namespace
+          <select id="ns"></select>
+        </label>
+      </header>
+
+      <div class="layout">
+        <main>
+          <section id="overview" class="overview" hidden></section>
+          <table id="table-wrap">
+            <thead id="head"></thead>
+            <tbody id="body">
+              <tr>
+                <td colspan="6">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </main>
+
+        <aside id="detail" class="detail" hidden>
+          <div class="detail-top">
+            <div>
+              <p class="eyebrow" id="detail-kind">Detail</p>
+              <h2 id="detail-title">—</h2>
+            </div>
+            <button type="button" id="detail-close" class="ghost">Close</button>
+          </div>
+          <p id="detail-meta" class="meta"></p>
+          <h3>Ask kprompt</h3>
+          <div class="handoff">
+            <div class="handoff-presets" id="handoff-presets"></div>
+            <label class="handoff-label">
+              Prompt
+              <textarea
+                id="handoff-prompt"
+                rows="2"
+                placeholder='e.g. explain why payment-api is crashing'
+              ></textarea>
+            </label>
+            <div class="handoff-actions">
+              <button type="button" id="handoff-copy" class="primary">Copy command</button>
+              <span id="handoff-status" class="meta" aria-live="polite"></span>
+            </div>
+            <pre id="handoff-cmd" class="cmd">—</pre>
+          </div>
+          <h3>Conditions</h3>
+          <ul id="detail-conditions" class="list"></ul>
+          <h3>Events</h3>
+          <ul id="detail-events" class="list"></ul>
+          <div id="logs-wrap">
+            <h3>Logs <span id="detail-log-pod" class="meta"></span></h3>
+            <pre id="detail-logs" class="logs">—</pre>
+          </div>
+        </aside>
       </div>
-    </section>
 
-    <div class="layout">
-      <main>
-        <table>
-          <thead id="head"></thead>
-          <tbody id="body">
-            <tr>
-              <td colspan="6">Loading…</td>
-            </tr>
-          </tbody>
-        </table>
-      </main>
-
-      <aside id="detail" class="detail" hidden>
-        <div class="detail-top">
-          <div>
-            <p class="eyebrow" id="detail-kind">Detail</p>
-            <h2 id="detail-title">—</h2>
-          </div>
-          <button type="button" id="detail-close" class="ghost">Close</button>
-        </div>
-        <p id="detail-meta" class="meta"></p>
-        <h3>Ask kprompt</h3>
-        <div class="handoff">
-          <div class="handoff-presets" id="handoff-presets"></div>
-          <label class="handoff-label">
-            Prompt
-            <textarea id="handoff-prompt" rows="2" placeholder='e.g. explain why payment-api is crashing'></textarea>
-          </label>
-          <div class="handoff-actions">
-            <button type="button" id="handoff-copy" class="primary">Copy command</button>
-            <span id="handoff-status" class="meta" aria-live="polite"></span>
-          </div>
-          <pre id="handoff-cmd" class="cmd">—</pre>
-        </div>
-        <h3>Conditions</h3>
-        <ul id="detail-conditions" class="list"></ul>
-        <h3>Events</h3>
-        <ul id="detail-events" class="list"></ul>
-        <h3>Logs <span id="detail-log-pod" class="meta"></span></h3>
-        <pre id="detail-logs" class="logs">—</pre>
-      </aside>
+      <footer>
+        <p>
+          Mutate via <code>kprompt "…"</code> — not a Lens replacement.
+        </p>
+      </footer>
     </div>
-
-    <footer>
-      <p>
-        Read-only localhost inventory. Mutate via
-        <code>kprompt "…"</code> — not a Lens replacement.
-      </p>
-    </footer>
     <script src="/app.js"></script>
   </body>
 </html>

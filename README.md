@@ -13,8 +13,8 @@ Uses your local **kubeconfig** (same as `kubectl` / `kprompt`). Binds to **`127.
 
 ## What it is
 
-- Namespace + Deployment + Pod tables
-- Detail: events + short log tail
+- Sidebar: Cluster · Nodes · Deployments · ReplicaSets · Pods
+- Detail: events + short log tail (workloads)
 - Prompt handoff: copy a `kprompt "…"` command with `-n` / `--context`
 
 ## What it is not

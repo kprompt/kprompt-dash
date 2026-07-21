@@ -27,11 +27,161 @@ func Mount(mux *http.ServeMux, cl *kube.Clients) {
 	mux.HandleFunc("GET /api/v1/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "context": cl.Context})
 	})
+	mux.HandleFunc("GET /api/v1/overview", clusterOverview(cl))
+	mux.HandleFunc("GET /api/v1/nodes", listNodes(cl))
+	mux.HandleFunc("GET /api/v1/nodes/{name}", getNode(cl))
 	mux.HandleFunc("GET /api/v1/namespaces", listNamespaces(cl))
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/deployments", listDeployments(cl))
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/deployments/{name}", getDeployment(cl))
+	mux.HandleFunc("GET /api/v1/namespaces/{ns}/replicasets", listReplicaSets(cl))
+	mux.HandleFunc("GET /api/v1/namespaces/{ns}/replicasets/{name}", getReplicaSet(cl))
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/pods", listPods(cl))
 	mux.HandleFunc("GET /api/v1/namespaces/{ns}/pods/{name}", getPod(cl))
+}
+
+func clusterOverview(cl *kube.Clients) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		nodes, errN := cl.Clientset.CoreV1().Nodes().List(r.Context(), metav1.ListOptions{Limit: 500})
+		nss, errNS := cl.Clientset.CoreV1().Namespaces().List(r.Context(), metav1.ListOptions{Limit: 500})
+		out := map[string]any{
+			"context": cl.Context,
+		}
+		if errN != nil {
+			out["nodes_error"] = errN.Error()
+			out["nodes"] = 0
+			out["nodes_ready"] = 0
+		} else {
+			ready := 0
+			for _, n := range nodes.Items {
+				if nodeReady(&n) {
+					ready++
+				}
+			}
+			out["nodes"] = len(nodes.Items)
+			out["nodes_ready"] = ready
+		}
+		if errNS != nil {
+			out["namespaces_error"] = errNS.Error()
+			out["namespaces"] = 0
+		} else {
+			out["namespaces"] = len(nss.Items)
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+func listNodes(cl *kube.Clients) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		list, err := cl.Clientset.CoreV1().Nodes().List(r.Context(), metav1.ListOptions{Limit: 500})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		out := make([]map[string]any, 0, len(list.Items))
+		for _, n := range list.Items {
+			out = append(out, map[string]any{
+				"name":     n.Name,
+				"ready":    nodeReady(&n),
+				"roles":    nodeRoles(&n),
+				"version":  n.Status.NodeInfo.KubeletVersion,
+				"os":       n.Status.NodeInfo.OperatingSystem,
+				"arch":     n.Status.NodeInfo.Architecture,
+				"age":      age(n.CreationTimestamp.Time),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": out, "context": cl.Context})
+	}
+}
+
+func getNode(cl *kube.Clients) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		n, err := cl.Clientset.CoreV1().Nodes().Get(r.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		events := listEvents(r, cl, "", "Node", name)
+		// Node events are often in default ns or cluster-scoped; also try kube-system.
+		if len(events) == 0 || (len(events) == 1 && events[0]["reason"] == "ListFailed") {
+			events = listEvents(r, cl, "default", "Node", name)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"kind":       "Node",
+			"name":       n.Name,
+			"context":    cl.Context,
+			"age":        age(n.CreationTimestamp.Time),
+			"ready":      nodeReady(n),
+			"roles":      nodeRoles(n),
+			"labels":     n.Labels,
+			"conditions": nodeConditions(n),
+			"events":     events,
+			"info": map[string]string{
+				"kubelet": n.Status.NodeInfo.KubeletVersion,
+				"os":      n.Status.NodeInfo.OperatingSystem,
+				"arch":    n.Status.NodeInfo.Architecture,
+				"runtime": n.Status.NodeInfo.ContainerRuntimeVersion,
+			},
+		})
+	}
+}
+
+func listReplicaSets(cl *kube.Clients) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ns := r.PathValue("ns")
+		list, err := cl.Clientset.AppsV1().ReplicaSets(ns).List(r.Context(), metav1.ListOptions{Limit: 500})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		out := make([]map[string]any, 0, len(list.Items))
+		for _, rs := range list.Items {
+			desired := int32(0)
+			if rs.Spec.Replicas != nil {
+				desired = *rs.Spec.Replicas
+			}
+			out = append(out, map[string]any{
+				"name":      rs.Name,
+				"namespace": rs.Namespace,
+				"ready":     fmt.Sprintf("%d/%d", rs.Status.ReadyReplicas, desired),
+				"replicas":  desired,
+				"ready_n":   rs.Status.ReadyReplicas,
+				"owner":     ownerName(rs.OwnerReferences),
+				"age":       age(rs.CreationTimestamp.Time),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": out, "namespace": ns})
+	}
+}
+
+func getReplicaSet(cl *kube.Clients) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ns := r.PathValue("ns")
+		name := r.PathValue("name")
+		rs, err := cl.Clientset.AppsV1().ReplicaSets(ns).Get(r.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		desired := int32(0)
+		if rs.Spec.Replicas != nil {
+			desired = *rs.Spec.Replicas
+		}
+		events := listEvents(r, cl, ns, "ReplicaSet", name)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"kind":       "ReplicaSet",
+			"name":       rs.Name,
+			"namespace":  rs.Namespace,
+			"context":    cl.Context,
+			"age":        age(rs.CreationTimestamp.Time),
+			"ready":      fmt.Sprintf("%d/%d", rs.Status.ReadyReplicas, desired),
+			"replicas":   desired,
+			"owner":      ownerName(rs.OwnerReferences),
+			"labels":     rs.Labels,
+			"conditions": rsConditions(rs),
+			"events":     events,
+		})
+	}
 }
 
 func listNamespaces(cl *kube.Clients) http.HandlerFunc {
@@ -163,11 +313,17 @@ func getPod(cl *kube.Clients) http.HandlerFunc {
 }
 
 func listEvents(r *http.Request, cl *kube.Clients, ns, kind, name string) []map[string]string {
-	field := fmt.Sprintf("involvedObject.kind=%s,involvedObject.name=%s", kind, name)
-	list, err := cl.Clientset.CoreV1().Events(ns).List(r.Context(), metav1.ListOptions{
-		FieldSelector: field,
+	opts := metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.kind=%s,involvedObject.name=%s", kind, name),
 		Limit:         100,
-	})
+	}
+	var list *corev1.EventList
+	var err error
+	if ns == "" {
+		list, err = cl.Clientset.CoreV1().Events("").List(r.Context(), opts)
+	} else {
+		list, err = cl.Clientset.CoreV1().Events(ns).List(r.Context(), opts)
+	}
 	if err != nil {
 		return []map[string]string{{"type": "Error", "reason": "ListFailed", "message": err.Error()}}
 	}
@@ -191,6 +347,71 @@ func listEvents(r *http.Request, cl *kube.Clients, ns, kind, name string) []map[
 		})
 	}
 	return out
+}
+
+func nodeReady(n *corev1.Node) bool {
+	for _, c := range n.Status.Conditions {
+		if c.Type == corev1.NodeReady {
+			return c.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+func nodeRoles(n *corev1.Node) string {
+	var roles []string
+	for k := range n.Labels {
+		if strings.HasPrefix(k, "node-role.kubernetes.io/") {
+			role := strings.TrimPrefix(k, "node-role.kubernetes.io/")
+			if role == "" {
+				role = "master"
+			}
+			roles = append(roles, role)
+		}
+	}
+	if len(roles) == 0 {
+		return "worker"
+	}
+	sort.Strings(roles)
+	return strings.Join(roles, ",")
+}
+
+func nodeConditions(n *corev1.Node) []map[string]string {
+	out := make([]map[string]string, 0, len(n.Status.Conditions))
+	for _, c := range n.Status.Conditions {
+		out = append(out, map[string]string{
+			"type":    string(c.Type),
+			"status":  string(c.Status),
+			"reason":  c.Reason,
+			"message": truncate(c.Message, 240),
+		})
+	}
+	return out
+}
+
+func rsConditions(rs *appsv1.ReplicaSet) []map[string]string {
+	out := make([]map[string]string, 0, len(rs.Status.Conditions))
+	for _, c := range rs.Status.Conditions {
+		out = append(out, map[string]string{
+			"type":    string(c.Type),
+			"status":  string(c.Status),
+			"reason":  c.Reason,
+			"message": truncate(c.Message, 240),
+		})
+	}
+	return out
+}
+
+func ownerName(refs []metav1.OwnerReference) string {
+	for _, o := range refs {
+		if o.Controller != nil && *o.Controller {
+			return o.Kind + "/" + o.Name
+		}
+	}
+	if len(refs) == 0 {
+		return "—"
+	}
+	return refs[0].Kind + "/" + refs[0].Name
 }
 
 func pickDeploymentPod(r *http.Request, cl *kube.Clients, d *appsv1.Deployment) (string, error) {
