@@ -26,16 +26,35 @@
       </div>
     </section>
 
-    <main>
-      <table>
-        <thead id="head"></thead>
-        <tbody id="body">
-          <tr>
-            <td colspan="6">Loading…</td>
-          </tr>
-        </tbody>
-      </table>
-    </main>
+    <div class="layout">
+      <main>
+        <table>
+          <thead id="head"></thead>
+          <tbody id="body">
+            <tr>
+              <td colspan="6">Loading…</td>
+            </tr>
+          </tbody>
+        </table>
+      </main>
+
+      <aside id="detail" class="detail" hidden>
+        <div class="detail-top">
+          <div>
+            <p class="eyebrow" id="detail-kind">Detail</p>
+            <h2 id="detail-title">—</h2>
+          </div>
+          <button type="button" id="detail-close" class="ghost">Close</button>
+        </div>
+        <p id="detail-meta" class="meta"></p>
+        <h3>Conditions</h3>
+        <ul id="detail-conditions" class="list"></ul>
+        <h3>Events</h3>
+        <ul id="detail-events" class="list"></ul>
+        <h3>Logs <span id="detail-log-pod" class="meta"></span></h3>
+        <pre id="detail-logs" class="logs">—</pre>
+      </aside>
+    </div>
 
     <footer>
       <p>
