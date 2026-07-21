@@ -47,6 +47,19 @@
           <button type="button" id="detail-close" class="ghost">Close</button>
         </div>
         <p id="detail-meta" class="meta"></p>
+        <h3>Ask kprompt</h3>
+        <div class="handoff">
+          <div class="handoff-presets" id="handoff-presets"></div>
+          <label class="handoff-label">
+            Prompt
+            <textarea id="handoff-prompt" rows="2" placeholder='e.g. explain why payment-api is crashing'></textarea>
+          </label>
+          <div class="handoff-actions">
+            <button type="button" id="handoff-copy" class="primary">Copy command</button>
+            <span id="handoff-status" class="meta" aria-live="polite"></span>
+          </div>
+          <pre id="handoff-cmd" class="cmd">—</pre>
+        </div>
         <h3>Conditions</h3>
         <ul id="detail-conditions" class="list"></ul>
         <h3>Events</h3>

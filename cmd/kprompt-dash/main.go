@@ -8,7 +8,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -44,9 +46,11 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("kprompt-dash listening on http://%s (context=%s)", *addr, clients.Context)
+		url := "http://" + *addr
+		log.Printf("kprompt-dash listening on %s (context=%s)", url, clients.Context)
 		if *open {
-			fmt.Fprintf(os.Stderr, "Open: http://%s\n", *addr)
+			fmt.Fprintf(os.Stderr, "Open: %s\n", url)
+			_ = openBrowser(url)
 		}
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
@@ -76,4 +80,17 @@ func warnIfNonLocal(addr string) error {
 	}
 	log.Printf("WARNING: listening on non-loopback %s — dash has no auth; kube access equals this process", addr)
 	return nil
+}
+
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Start()
 }

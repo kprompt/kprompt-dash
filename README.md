@@ -3,8 +3,10 @@
 **Simple, read-only, localhost cluster inventory** for [kprompt](https://github.com/kprompt/kprompt) — not a Lens/Headlamp replacement.
 
 ```bash
-go run ./cmd/kprompt-dash
-# open http://127.0.0.1:7474
+go run ./cmd/kprompt-dash -open
+# or via the main CLI (after install):
+#   go install github.com/kprompt/kprompt-dash/cmd/kprompt-dash@latest
+#   kprompt dash
 ```
 
 Uses your local **kubeconfig** (same as `kubectl` / `kprompt`). Binds to **`127.0.0.1` only** by default.
@@ -12,8 +14,8 @@ Uses your local **kubeconfig** (same as `kubectl` / `kprompt`). Binds to **`127.
 ## What it is
 
 - Namespace + Deployment + Pod tables
-- Detail: events + short log tail (coming in D-005)
-- Handoff to `kprompt "…"` for plan → approve → apply (D-006)
+- Detail: events + short log tail
+- Prompt handoff: copy a `kprompt "…"` command with `-n` / `--context`
 
 ## What it is not
 

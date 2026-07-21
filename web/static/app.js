@@ -11,9 +11,15 @@ const detailEvents = document.getElementById("detail-events");
 const detailLogs = document.getElementById("detail-logs");
 const detailLogPod = document.getElementById("detail-log-pod");
 const detailClose = document.getElementById("detail-close");
+const handoffPresets = document.getElementById("handoff-presets");
+const handoffPrompt = document.getElementById("handoff-prompt");
+const handoffCopy = document.getElementById("handoff-copy");
+const handoffCmd = document.getElementById("handoff-cmd");
+const handoffStatus = document.getElementById("handoff-status");
 
 let kind = "deployments";
 let selected = null;
+let kubeContext = "";
 
 document.querySelectorAll(".tab").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -30,10 +36,22 @@ nsEl.addEventListener("change", () => {
   refreshTable();
 });
 detailClose.addEventListener("click", closeDetail);
+handoffPrompt.addEventListener("input", refreshHandoffCmd);
+handoffCopy.addEventListener("click", async () => {
+  const cmd = handoffCmd.textContent || "";
+  if (!cmd || cmd === "—") return;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    handoffStatus.textContent = "Copied — paste in a terminal";
+  } catch {
+    handoffStatus.textContent = "Copy failed — select the command manually";
+  }
+});
 
 async function init() {
   const health = await fetchJSON("/api/v1/healthz");
-  ctxEl.textContent = `context: ${health.context || "—"}`;
+  kubeContext = health.context || "";
+  ctxEl.textContent = `context: ${kubeContext || "—"}`;
   const ns = await fetchJSON("/api/v1/namespaces");
   nsEl.innerHTML = "";
   const items = ns.items || [];
@@ -104,6 +122,8 @@ async function openDetail(name) {
   detailEvents.innerHTML = "";
   detailLogs.textContent = "…";
   detailLogPod.textContent = "";
+  handoffStatus.textContent = "";
+  setupHandoff(name, ns);
   try {
     const path =
       kind === "deployments"
@@ -128,6 +148,53 @@ async function openDetail(name) {
     detailMeta.textContent = String(e.message || e);
     detailLogs.textContent = "—";
   }
+}
+
+function setupHandoff(name, ns) {
+  const presets =
+    kind === "deployments"
+      ? [
+          `explain why ${name} is not ready`,
+          `logs ${name}`,
+          `describe ${name}`,
+          `scale ${name} to 2`,
+        ]
+      : [
+          `explain why pod ${name} is failing`,
+          `logs ${name}`,
+          `describe pod ${name}`,
+        ];
+  handoffPresets.innerHTML = "";
+  for (const p of presets) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = p;
+    b.addEventListener("click", () => {
+      handoffPrompt.value = p;
+      refreshHandoffCmd();
+    });
+    handoffPresets.appendChild(b);
+  }
+  handoffPrompt.value = presets[0];
+  refreshHandoffCmd();
+}
+
+function refreshHandoffCmd() {
+  const prompt = (handoffPrompt.value || "").trim();
+  if (!prompt || !selected) {
+    handoffCmd.textContent = "—";
+    return;
+  }
+  const ns = nsEl.value;
+  let cmd = `kprompt ${shellQuote(prompt)}`;
+  if (ns) cmd += ` -n ${shellQuote(ns)}`;
+  if (kubeContext) cmd += ` --context ${shellQuote(kubeContext)}`;
+  handoffCmd.textContent = cmd;
+}
+
+function shellQuote(s) {
+  if (/^[A-Za-z0-9_./:@+=,-]+$/.test(s)) return s;
+  return `'${String(s).replaceAll("'", `'\"'\"'`)}'`;
 }
 
 function closeDetail() {

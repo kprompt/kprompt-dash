@@ -209,6 +209,78 @@ tbody tr.active {
   color: #c8d2de;
 }
 
+.handoff {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.handoff-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.handoff-presets button {
+  border: 1px solid var(--border);
+  background: #12171e;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.handoff-label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.handoff-label textarea {
+  margin-top: 0.35rem;
+  width: 100%;
+  resize: vertical;
+  min-height: 3rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0c1015;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+.handoff-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.primary {
+  border: none;
+  background: var(--accent);
+  color: #061018;
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cmd {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: #0c1015;
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #c8d2de;
+}
+
 th,
 td {
   text-align: left;
