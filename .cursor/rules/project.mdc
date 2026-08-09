@@ -1,0 +1,33 @@
+---
+description: kprompt-dash defaults — Go local dashboard, read-first, local bind, approval DNA
+alwaysApply: true
+---
+
+# kprompt-dash rules
+
+## Repo
+
+OSS local cluster dashboard (ADR-0011): Go 1.23 serving an embedded web UI. Read-first, run-locally tool. See `AGENTS.md`.
+
+## Locked constraints
+
+- Read-first; any mutation follows plan -> approve like the CLI. No silent cluster writes.
+- Default to a local bind address; widening exposure requires an explicit flag + warning.
+- kubeconfig via `client-go`; treat all HTTP input as untrusted.
+- Honesty: label experimental views; never fake cluster data.
+
+## Style
+
+- `gofmt`; packages under `internal/` (`api`, `kube`, `bind`); UI embedded from `web/`.
+- Rebuild embedded assets when the UI changes; prefer table tests.
+
+## Checks
+
+```bash
+go test ./...
+go build ./cmd/kprompt-dash
+```
+
+## Commits
+
+Only commit or open PRs when the user asks.
